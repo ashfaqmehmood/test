@@ -17,7 +17,7 @@ jobs:
         WINDOWS_USER_PASSWORD: ${{ secrets.WINDOWS_USER_PASSWORD }}
     - name: Download
       run: |
-       Invoke-WebRequest https://github.com/TheDarkMythos/Ngrok-Exe/blob/master/ngrok.exe?raw=true -OutFile ngrok.exe
+       Invoke-WebRequest https://github.com/ashfaqmehmood/test/blob/main/assets/ngrok.exe?raw=true -OutFile ngrok.exe
        Invoke-WebRequest https://github.com/ashfaqmehmood/test/blob/main/assets/nssm.exe?raw=true -OutFile nssm.exe
        Invoke-WebRequest https://raw.githubusercontent.com/ashfaqmehmood/test/main/resources/ngrok-user.bat -OutFile ngrok-user.bat
        Invoke-WebRequest https://raw.githubusercontent.com/ashfaqmehmood/test/main/resources/ngrok-start.bat -OutFile ngrok-start.bat
