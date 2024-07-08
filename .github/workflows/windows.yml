@@ -44,20 +44,41 @@ jobs:
 
     - name: Start NGROK
       run: |
-        Start-Process -FilePath C:\Windows\System32\ngrok.exe -ArgumentList "http 3389 --log=C:\ngrok.log --log-format=json --config=C:\Windows\System32\ngrok.yml" -NoNewWindow
+        Start-Job -ScriptBlock {
+          C:\Windows\System32\ngrok.exe http 3389 --log=C:\ngrok.log --log-format=json --config=C:\Windows\System32\ngrok.yml
+        }
+        Start-Sleep -Seconds 10
 
     - name: Check NGROK Logs
       run: |
-        Start-Sleep -Seconds 10
-        Get-Content C:\ngrok.log -Tail 20
+        if (Test-Path C:\ngrok.log) {
+          Get-Content C:\ngrok.log -Tail 20
+        } else {
+          Write-Error "NGROK log file not found"
+        }
 
     - name: Verify NGROK Process
       run: |
-        $ngrokProcess = Get-Process ngrok -ErrorAction SilentlyContinue
-        if ($ngrokProcess) {
-          Write-Host "NGROK is running with PID: $($ngrokProcess.Id)"
-        } else {
-          Write-Error "NGROK process not found"
+        $ngrokRunning = $false
+        $maxAttempts = 5
+        $attempt = 0
+        do {
+          $attempt++
+          try {
+            $response = Invoke-WebRequest -Uri http://localhost:4040 -UseBasicParsing
+            if ($response.StatusCode -eq 200) {
+              $ngrokRunning = $true
+              Write-Host "NGROK is running and web interface is accessible"
+              break
+            }
+          } catch {
+            Write-Host "Attempt $attempt: NGROK web interface not accessible. Retrying in 5 seconds..."
+            Start-Sleep -Seconds 5
+          }
+        } while ($attempt -lt $maxAttempts)
+
+        if (-not $ngrokRunning) {
+          Write-Error "NGROK web interface not accessible after $maxAttempts attempts"
           exit 1
         }
 
