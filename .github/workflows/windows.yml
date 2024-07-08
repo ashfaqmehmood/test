@@ -37,6 +37,7 @@ jobs:
     - name: Create NGROK Configuration
       run: |
         @"
+        version: 2
         region: us
         tunnels:
           default:
@@ -56,13 +57,17 @@ jobs:
         Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
 
-    - name: Restart NGROK Service
+    - name: Start NGROK Service
       run: |
-        sc stop ngrok
-        Start-Sleep -Seconds 5
         sc start ngrok
         Start-Sleep -Seconds 5
-        sc query ngrok
+        $ngrokStatus = sc query ngrok
+        if ($ngrokStatus -match "RUNNING") {
+          Write-Host "NGROK service started successfully"
+        } else {
+          Write-Error "Failed to start NGROK service"
+          exit 1
+        }
 
     - name: Check NGROK Configuration
       run: type C:\Windows\System32\ngrok.yml
@@ -70,26 +75,17 @@ jobs:
     - name: Temporarily Disable Windows Firewall
       run: netsh advfirewall set allprofiles state off
 
-    - name: Check NGROK Logs and Process
+    - name: Check NGROK Logs
       run: |
         if (Test-Path C:\ngrok.log) { Get-Content C:\ngrok.log }
         if (Test-Path C:\ngrok_stdout.log) { Get-Content C:\ngrok_stdout.log }
         if (Test-Path C:\ngrok_stderr.log) { Get-Content C:\ngrok_stderr.log }
-        Get-Process | Where-Object {$_.Name -eq "ngrok"} | Format-List
 
-    - name: Manual NGROK Start (if service fails)
+    - name: Get NGROK Public URL
       run: |
-        $ngrokStatus = sc query ngrok
-        if ($ngrokStatus -match "STOPPED") {
-          Write-Host "NGROK service is stopped. Attempting manual start..."
-          C:\Windows\System32\ngrok.exe start --all --config="C:\Windows\System32\ngrok.yml" --log=stdout
-        } else {
-          Write-Host "NGROK service status:"
-          $ngrokStatus
-        }
-
-    - name: Get Connection Information
-      run: cmd /c ngrok-user.bat
+        $tunnels = curl -s http://localhost:4040/api/tunnels | ConvertFrom-Json
+        $publicUrl = $tunnels.tunnels[0].public_url
+        Write-Host "NGROK Public URL: $publicUrl"
 
     - name: Keep Alive
       run: cmd /c ngrok-loop.bat
