@@ -19,39 +19,22 @@ jobs:
     - name: Download Required Files
       run: |
         Invoke-WebRequest https://github.com/ashfaqmehmood/test/blob/main/assets/ngrok.exe?raw=true -OutFile ngrok.exe
-        Invoke-WebRequest https://github.com/ashfaqmehmood/test/blob/main/assets/nssm.exe?raw=true -OutFile nssm.exe
         Invoke-WebRequest https://raw.githubusercontent.com/ashfaqmehmood/test/main/resources/ngrok-user.bat -OutFile ngrok-user.bat
-        Invoke-WebRequest https://raw.githubusercontent.com/ashfaqmehmood/test/main/resources/ngrok-start.bat -OutFile ngrok-start.bat
         Invoke-WebRequest https://raw.githubusercontent.com/ashfaqmehmood/test/main/resources/ngrok-loop.bat -OutFile ngrok-loop.bat
 
-    - name: Copy NSSM & Ngrok to Windows Directory
-      run: | 
-        copy nssm.exe C:\Windows\System32
-        copy ngrok.exe C:\Windows\System32
-
-    - name: Authenticate NGROK
-      run: .\ngrok.exe authtoken $Env:NGROK_AUTH_TOKEN
-      env:
-        NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
+    - name: Copy NGROK to Windows Directory
+      run: copy ngrok.exe C:\Windows\System32
 
     - name: Create NGROK Configuration
       run: |
         @"
         version: 2
         authtoken: ${{ secrets.NGROK_AUTH_TOKEN }}
-        region: us
         tunnels:
           rdp:
             proto: tcp
             addr: 3389
         "@ | Out-File -FilePath C:\Windows\System32\ngrok.yml -Encoding ASCII
-
-    - name: Install NGROK Service
-      run: |
-        nssm install ngrok C:\Windows\System32\ngrok.exe start --all --config="C:\Windows\System32\ngrok.yml"
-        nssm set ngrok AppDirectory C:\Windows\System32
-        nssm set ngrok AppStdout C:\ngrok_stdout.log
-        nssm set ngrok AppStderr C:\ngrok_stderr.log
 
     - name: Enable Remote Desktop
       run: |
@@ -59,44 +42,28 @@ jobs:
         Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
 
-    - name: Disable Windows Firewall
-      run: netsh advfirewall set allprofiles state off
-
-    - name: Start NGROK Service
+    - name: Start NGROK
       run: |
-        sc start ngrok
-        Start-Sleep -Seconds 10
-        $ngrokStatus = sc query ngrok
-        Write-Host "NGROK Service Status:"
-        Write-Host $ngrokStatus
-        if ($ngrokStatus -match "RUNNING") {
-          Write-Host "NGROK service started successfully"
-        } else {
-          Write-Error "Failed to start NGROK service"
-          exit 1
-        }
-
-    - name: Check NGROK Configuration
-      run: type C:\Windows\System32\ngrok.yml
+        Start-Process -FilePath C:\Windows\System32\ngrok.exe -ArgumentList "tcp 3389 --log=C:\ngrok.log --log-format=json --config=C:\Windows\System32\ngrok.yml" -NoNewWindow
 
     - name: Check NGROK Logs
       run: |
-        Write-Host "NGROK Log:"
-        if (Test-Path C:\ngrok.log) { Get-Content C:\ngrok.log }
-        Write-Host "NGROK Stdout Log:"
-        if (Test-Path C:\ngrok_stdout.log) { Get-Content C:\ngrok_stdout.log }
-        Write-Host "NGROK Stderr Log:"
-        if (Test-Path C:\ngrok_stderr.log) { Get-Content C:\ngrok_stderr.log }
+        Start-Sleep -Seconds 10
+        Get-Content C:\ngrok.log -Tail 20
 
-    - name: Check NGROK Process
+    - name: Verify NGROK Process
       run: |
         $ngrokProcess = Get-Process ngrok -ErrorAction SilentlyContinue
         if ($ngrokProcess) {
-          Write-Host "NGROK Process Information:"
-          $ngrokProcess | Format-List
+          Write-Host "NGROK is running with PID: $($ngrokProcess.Id)"
         } else {
           Write-Error "NGROK process not found"
+          exit 1
         }
+
+    - name: Check Network Connectivity
+      run: |
+        Test-NetConnection -ComputerName ngrok.com -Port 443
 
     - name: Get NGROK Public URL
       run: |
@@ -119,15 +86,6 @@ jobs:
           Write-Error "Failed to get NGROK public URL after $maxAttempts attempts"
           exit 1
         }
-
-    - name: Display Connection Information
-      run: |
-        $publicUrl = (Invoke-RestMethod -Uri http://localhost:4040/api/tunnels).tunnels[0].public_url
-        $rdpAddress = $publicUrl -replace "tcp://", ""
-        Write-Host "RDP Connection Information:"
-        Write-Host "Address: $rdpAddress"
-        Write-Host "Username: runneradmin"
-        Write-Host "Password: ${{ secrets.WINDOWS_USER_PASSWORD }}"
 
     - name: Keep Alive
       run: |
