@@ -40,6 +40,13 @@ jobs:
       run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
     - name: Create Tunnel
       run: sc start ngrok
+    - name: Check NGROK service status
+      run: |
+        sc query ngrok
+        if ($LASTEXITCODE -ne 0) {
+          Write-Error "NGROK service failed to start"
+          exit 1
+        }    
     - name: Connecting Process
       run: cmd /c ngrok-user.bat
     - name: Looping Process
