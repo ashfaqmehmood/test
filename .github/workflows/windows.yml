@@ -94,7 +94,7 @@ jobs:
             Write-Host "NGROK Public URL: $publicUrl"
             break
           } catch {
-            Write-Host "Attempt $attempt: Failed to get NGROK public URL. Retrying in 5 seconds..."
+            Write-Host "Attempt ${attempt}: Failed to get NGROK public URL. Retrying in 5 seconds..."
             Start-Sleep -Seconds 5
           }
         } while ($attempt -lt $maxAttempts)
