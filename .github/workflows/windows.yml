@@ -15,48 +15,75 @@ jobs:
         Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText $Env:WINDOWS_USER_PASSWORD -Force)
       env:
         WINDOWS_USER_PASSWORD: ${{ secrets.WINDOWS_USER_PASSWORD }}
-    - name: Download
+
+    - name: Download Required Files
       run: |
-       Invoke-WebRequest https://github.com/ashfaqmehmood/test/blob/main/assets/ngrok.exe?raw=true -OutFile ngrok.exe
-       Invoke-WebRequest https://github.com/ashfaqmehmood/test/blob/main/assets/nssm.exe?raw=true -OutFile nssm.exe
-       Invoke-WebRequest https://raw.githubusercontent.com/ashfaqmehmood/test/main/resources/ngrok-user.bat -OutFile ngrok-user.bat
-       Invoke-WebRequest https://raw.githubusercontent.com/ashfaqmehmood/test/main/resources/ngrok-start.bat -OutFile ngrok-start.bat
-       Invoke-WebRequest https://raw.githubusercontent.com/ashfaqmehmood/test/main/resources/ngrok-loop.bat -OutFile ngrok-loop.bat
-    - name: Copy NSSM & Ngrok to Windows Directory.
+        Invoke-WebRequest https://github.com/ashfaqmehmood/test/blob/main/assets/ngrok.exe?raw=true -OutFile ngrok.exe
+        Invoke-WebRequest https://github.com/ashfaqmehmood/test/blob/main/assets/nssm.exe?raw=true -OutFile nssm.exe
+        Invoke-WebRequest https://raw.githubusercontent.com/ashfaqmehmood/test/main/resources/ngrok-user.bat -OutFile ngrok-user.bat
+        Invoke-WebRequest https://raw.githubusercontent.com/ashfaqmehmood/test/main/resources/ngrok-start.bat -OutFile ngrok-start.bat
+        Invoke-WebRequest https://raw.githubusercontent.com/ashfaqmehmood/test/main/resources/ngrok-loop.bat -OutFile ngrok-loop.bat
+
+    - name: Copy NSSM & Ngrok to Windows Directory
       run: | 
         copy nssm.exe C:\Windows\System32
         copy ngrok.exe C:\Windows\System32
-    - name: Auth
+
+    - name: Auth NGROK
       run: .\ngrok.exe authtoken $Env:NGROK_AUTH_TOKEN
       env:
         NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
-    - name: Installing Ngrok Process as a Windows Core Services
-      run: start ngrok-start.bat
-    - name: Enable TS
-      run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server'-name "fDenyTSConnections" -Value 0
-    - name: Enabing Networking Firewall
-      run: Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
-    - name: Setting up RDP TCP UserAuthentication
-      run: Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
-    - name: Create Tunnel
-      run: sc start ngrok
-    - name: Check NGROK service status
+
+    - name: Create NGROK Configuration
       run: |
+        echo region: us > C:\Windows\System32\ngrok.yml
+        echo tunnels: >> C:\Windows\System32\ngrok.yml
+        echo     default: >> C:\Windows\System32\ngrok.yml
+        echo         proto: tcp >> C:\Windows\System32\ngrok.yml
+        echo         addr: 3389 >> C:\Windows\System32\ngrok.yml
+
+    - name: Install NGROK Service
+      run: |
+        nssm install ngrok C:\Windows\System32\ngrok.exe start --all --log=C:\ngrok.log --log-format=json --config="C:\Windows\System32\ngrok.yml"
+        nssm set ngrok AppStdout C:\ngrok_stdout.log
+        nssm set ngrok AppStderr C:\ngrok_stderr.log
+
+    - name: Enable Remote Desktop
+      run: |
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server' -name "fDenyTSConnections" -Value 0
+        Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
+        Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
+
+    - name: Start NGROK Service
+      run: |
+        sc start ngrok
+        Start-Sleep -Seconds 5
         sc query ngrok
-        if ($LASTEXITCODE -ne 0) {
-          Write-Error "NGROK service failed to start"
-          exit 1
-        }    
-    - name: Check NGROK configuration
+
+    - name: Check NGROK Configuration
+      run: type C:\Windows\System32\ngrok.yml
+
+    - name: Temporarily Disable Windows Firewall
+      run: netsh advfirewall set allprofiles state off
+
+    - name: Check NGROK Logs
       run: |
-        type C:\Windows\System32\ngrok.yml  
-    - name: Temporarily disable Windows Firewall
+        if (Test-Path C:\ngrok.log) { type C:\ngrok.log }
+        if (Test-Path C:\ngrok_stdout.log) { type C:\ngrok_stdout.log }
+        if (Test-Path C:\ngrok_stderr.log) { type C:\ngrok_stderr.log }
+
+    - name: Check NGROK Process
+      run: tasklist /FI "IMAGENAME eq ngrok.exe" /FO LIST /V
+
+    - name: Manually Start NGROK (if service fails)
       run: |
-        netsh advfirewall set allprofiles state off
-    - name: Manually start NGROK
-      run: |
-        C:\Windows\System32\ngrok.exe start --all --config="C:\Windows\System32\ngrok.yml" --log=stdout
-    - name: Connecting Process
+        $ngrokStatus = sc query ngrok
+        if ($ngrokStatus -match "STOPPED") {
+          C:\Windows\System32\ngrok.exe start --all --config="C:\Windows\System32\ngrok.yml" --log=stdout
+        }
+
+    - name: Get Connection Information
       run: cmd /c ngrok-user.bat
-    - name: Looping Process
+
+    - name: Keep Alive
       run: cmd /c ngrok-loop.bat
