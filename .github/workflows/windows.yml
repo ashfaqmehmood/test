@@ -47,6 +47,15 @@ jobs:
           Write-Error "NGROK service failed to start"
           exit 1
         }    
+    - name: Check NGROK configuration
+      run: |
+        type C:\Windows\System32\ngrok.yml  
+        - name: Temporarily disable Windows Firewall
+        run: |
+          netsh advfirewall set allprofiles state off
+    - name: Manually start NGROK
+      run: |
+        C:\Windows\System32\ngrok.exe start --all --config="C:\Windows\System32\ngrok.yml" --log=stdout
     - name: Connecting Process
       run: cmd /c ngrok-user.bat
     - name: Looping Process

@@ -2,4 +2,6 @@ C:
 cd C:\Users\runneradmin\.ngrok2
 echo region: us >> ngrok.yml & echo tunnels: >> ngrok.yml & echo     default: >> ngrok.yml & echo         proto: tcp >> ngrok.yml & echo         addr: 3389 >> ngrok.yml
 copy ngrok.yml C:\Windows\System32
-nssm install ngrok C:\Windows\System32\ngrok.exe start --all --log=stdout --log-format=json --config="C:\Windows\System32\ngrok.yml"
+nssm install ngrok C:\Windows\System32\ngrok.exe start --all --log=C:\ngrok.log --log-format=json --config="C:\Windows\System32\ngrok.yml"
+nssm set ngrok AppStdout C:\ngrok_stdout.log
+nssm set ngrok AppStderr C:\ngrok_stderr.log
