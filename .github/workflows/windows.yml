@@ -36,11 +36,13 @@ jobs:
 
     - name: Create NGROK Configuration
       run: |
-        echo region: us > C:\Windows\System32\ngrok.yml
-        echo tunnels: >> C:\Windows\System32\ngrok.yml
-        echo     default: >> C:\Windows\System32\ngrok.yml
-        echo         proto: tcp >> C:\Windows\System32\ngrok.yml
-        echo         addr: 3389 >> C:\Windows\System32\ngrok.yml
+        @"
+        region: us
+        tunnels:
+          default:
+            proto: tcp
+            addr: 3389
+        "@ | Out-File -FilePath C:\Windows\System32\ngrok.yml -Encoding ASCII
 
     - name: Install NGROK Service
       run: |
@@ -54,8 +56,10 @@ jobs:
         Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
 
-    - name: Start NGROK Service
+    - name: Restart NGROK Service
       run: |
+        sc stop ngrok
+        Start-Sleep -Seconds 5
         sc start ngrok
         Start-Sleep -Seconds 5
         sc query ngrok
@@ -66,20 +70,22 @@ jobs:
     - name: Temporarily Disable Windows Firewall
       run: netsh advfirewall set allprofiles state off
 
-    - name: Check NGROK Logs
+    - name: Check NGROK Logs and Process
       run: |
-        if (Test-Path C:\ngrok.log) { type C:\ngrok.log }
-        if (Test-Path C:\ngrok_stdout.log) { type C:\ngrok_stdout.log }
-        if (Test-Path C:\ngrok_stderr.log) { type C:\ngrok_stderr.log }
+        if (Test-Path C:\ngrok.log) { Get-Content C:\ngrok.log }
+        if (Test-Path C:\ngrok_stdout.log) { Get-Content C:\ngrok_stdout.log }
+        if (Test-Path C:\ngrok_stderr.log) { Get-Content C:\ngrok_stderr.log }
+        Get-Process | Where-Object {$_.Name -eq "ngrok"} | Format-List
 
-    - name: Check NGROK Process
-      run: tasklist /FI "IMAGENAME eq ngrok.exe" /FO LIST /V
-
-    - name: Manually Start NGROK (if service fails)
+    - name: Manual NGROK Start (if service fails)
       run: |
         $ngrokStatus = sc query ngrok
         if ($ngrokStatus -match "STOPPED") {
+          Write-Host "NGROK service is stopped. Attempting manual start..."
           C:\Windows\System32\ngrok.exe start --all --config="C:\Windows\System32\ngrok.yml" --log=stdout
+        } else {
+          Write-Host "NGROK service status:"
+          $ngrokStatus
         }
 
     - name: Get Connection Information
