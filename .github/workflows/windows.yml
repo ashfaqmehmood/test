@@ -1,16 +1,16 @@
-name: Windows Server 2019
+name: Windows Server Remote Access
 
 on: 
   workflow_dispatch:
 
 jobs:
   build:
-    name: Windows 10 Build
+    name: Windows Server Setup
     runs-on: windows-latest
     timeout-minutes: 9999
     
     steps:
-    - name: Creating Local User
+    - name: Set up Local User
       run: |
         Set-LocalUser -Name "runneradmin" -Password (ConvertTo-SecureString -AsPlainText $Env:WINDOWS_USER_PASSWORD -Force)
       env:
@@ -29,7 +29,7 @@ jobs:
         copy nssm.exe C:\Windows\System32
         copy ngrok.exe C:\Windows\System32
 
-    - name: Auth NGROK
+    - name: Authenticate NGROK
       run: .\ngrok.exe authtoken $Env:NGROK_AUTH_TOKEN
       env:
         NGROK_AUTH_TOKEN: ${{ secrets.NGROK_AUTH_TOKEN }}
@@ -37,17 +37,19 @@ jobs:
     - name: Create NGROK Configuration
       run: |
         @"
-        version: 3
+        version: 2
+        authtoken: ${{ secrets.NGROK_AUTH_TOKEN }}
         region: us
         tunnels:
-          default:
+          rdp:
             proto: tcp
             addr: 3389
         "@ | Out-File -FilePath C:\Windows\System32\ngrok.yml -Encoding ASCII
 
     - name: Install NGROK Service
       run: |
-        nssm install ngrok C:\Windows\System32\ngrok.exe start --all --log=C:\ngrok.log --log-format=json --config="C:\Windows\System32\ngrok.yml"
+        nssm install ngrok C:\Windows\System32\ngrok.exe start --all --config="C:\Windows\System32\ngrok.yml"
+        nssm set ngrok AppDirectory C:\Windows\System32
         nssm set ngrok AppStdout C:\ngrok_stdout.log
         nssm set ngrok AppStderr C:\ngrok_stderr.log
 
@@ -57,11 +59,16 @@ jobs:
         Enable-NetFirewallRule -DisplayGroup "Remote Desktop"
         Set-ItemProperty -Path 'HKLM:\System\CurrentControlSet\Control\Terminal Server\WinStations\RDP-Tcp' -name "UserAuthentication" -Value 1
 
+    - name: Disable Windows Firewall
+      run: netsh advfirewall set allprofiles state off
+
     - name: Start NGROK Service
       run: |
         sc start ngrok
-        Start-Sleep -Seconds 5
+        Start-Sleep -Seconds 10
         $ngrokStatus = sc query ngrok
+        Write-Host "NGROK Service Status:"
+        Write-Host $ngrokStatus
         if ($ngrokStatus -match "RUNNING") {
           Write-Host "NGROK service started successfully"
         } else {
@@ -72,20 +79,59 @@ jobs:
     - name: Check NGROK Configuration
       run: type C:\Windows\System32\ngrok.yml
 
-    - name: Temporarily Disable Windows Firewall
-      run: netsh advfirewall set allprofiles state off
-
     - name: Check NGROK Logs
       run: |
+        Write-Host "NGROK Log:"
         if (Test-Path C:\ngrok.log) { Get-Content C:\ngrok.log }
+        Write-Host "NGROK Stdout Log:"
         if (Test-Path C:\ngrok_stdout.log) { Get-Content C:\ngrok_stdout.log }
+        Write-Host "NGROK Stderr Log:"
         if (Test-Path C:\ngrok_stderr.log) { Get-Content C:\ngrok_stderr.log }
+
+    - name: Check NGROK Process
+      run: |
+        $ngrokProcess = Get-Process ngrok -ErrorAction SilentlyContinue
+        if ($ngrokProcess) {
+          Write-Host "NGROK Process Information:"
+          $ngrokProcess | Format-List
+        } else {
+          Write-Error "NGROK process not found"
+        }
 
     - name: Get NGROK Public URL
       run: |
-        $tunnels = curl -s http://localhost:4040/api/tunnels | ConvertFrom-Json
-        $publicUrl = $tunnels.tunnels[0].public_url
-        Write-Host "NGROK Public URL: $publicUrl"
+        $maxAttempts = 5
+        $attempt = 0
+        do {
+          $attempt++
+          try {
+            $tunnels = Invoke-RestMethod -Uri http://localhost:4040/api/tunnels -ErrorAction Stop
+            $publicUrl = $tunnels.tunnels[0].public_url
+            Write-Host "NGROK Public URL: $publicUrl"
+            break
+          } catch {
+            Write-Host "Attempt $attempt: Failed to get NGROK public URL. Retrying in 5 seconds..."
+            Start-Sleep -Seconds 5
+          }
+        } while ($attempt -lt $maxAttempts)
+        
+        if ($attempt -eq $maxAttempts) {
+          Write-Error "Failed to get NGROK public URL after $maxAttempts attempts"
+          exit 1
+        }
+
+    - name: Display Connection Information
+      run: |
+        $publicUrl = (Invoke-RestMethod -Uri http://localhost:4040/api/tunnels).tunnels[0].public_url
+        $rdpAddress = $publicUrl -replace "tcp://", ""
+        Write-Host "RDP Connection Information:"
+        Write-Host "Address: $rdpAddress"
+        Write-Host "Username: runneradmin"
+        Write-Host "Password: ${{ secrets.WINDOWS_USER_PASSWORD }}"
 
     - name: Keep Alive
-      run: cmd /c ngrok-loop.bat
+      run: |
+        while ($true) {
+          Write-Host "Keeping session alive. Current time: $(Get-Date)"
+          Start-Sleep -Seconds 600
+        }
