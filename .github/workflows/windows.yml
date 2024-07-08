@@ -32,7 +32,7 @@ jobs:
         authtoken: ${{ secrets.NGROK_AUTH_TOKEN }}
         tunnels:
           rdp:
-            proto: tcp
+            proto: http
             addr: 3389
         "@ | Out-File -FilePath C:\Windows\System32\ngrok.yml -Encoding ASCII
 
@@ -44,7 +44,7 @@ jobs:
 
     - name: Start NGROK
       run: |
-        Start-Process -FilePath C:\Windows\System32\ngrok.exe -ArgumentList "tcp 3389 --log=C:\ngrok.log --log-format=json --config=C:\Windows\System32\ngrok.yml" -NoNewWindow
+        Start-Process -FilePath C:\Windows\System32\ngrok.exe -ArgumentList "http 3389 --log=C:\ngrok.log --log-format=json --config=C:\Windows\System32\ngrok.yml" -NoNewWindow
 
     - name: Check NGROK Logs
       run: |
@@ -60,10 +60,6 @@ jobs:
           Write-Error "NGROK process not found"
           exit 1
         }
-
-    - name: Check Network Connectivity
-      run: |
-        Test-NetConnection -ComputerName ngrok.com -Port 443
 
     - name: Get NGROK Public URL
       run: |
