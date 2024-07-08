@@ -37,7 +37,7 @@ jobs:
     - name: Create NGROK Configuration
       run: |
         @"
-        version: 2
+        version: 3
         region: us
         tunnels:
           default:
