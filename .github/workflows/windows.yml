@@ -67,10 +67,9 @@ jobs:
             Write-Host "NGROK process is running with PID: $($ngrokProcess.Id)"
             break
           } else {
-            Write-Host "Attempt $attempt NGROK process not found. Restarting..."
+            Write-Host "Attempt $attempt: NGROK process not found. Restarting..."
             Start-Process -FilePath C:\Windows\System32\ngrok.exe -ArgumentList "http 3389 --log=C:\ngrok.log --log-format=json --config=C:\Windows\System32\ngrok.yml" -NoNewWindow
             Start-Sleep -Seconds 15
-          }
         } while ($attempt -lt $maxAttempts)
 
         if ($attempt -eq $maxAttempts) {
@@ -78,7 +77,32 @@ jobs:
           exit 1
         }
 
-    - name: Verify NGROK Tunnel
+    - name: Verify NGROK Web Interface
+      run: |
+        $ngrokRunning = $false
+        $maxAttempts = 10
+        $attempt = 0
+        do {
+          $attempt++
+          try {
+            $response = Invoke-WebRequest -Uri http://127.0.0.1:4040 -UseBasicParsing -TimeoutSec 5
+            if ($response.StatusCode -eq 200) {
+              $ngrokRunning = $true
+              Write-Host "NGROK is running and web interface is accessible"
+              break
+            }
+          } catch {
+            Write-Host "Attempt $attempt: NGROK web interface not accessible. Retrying in 5 seconds..."
+            Start-Sleep -Seconds 5
+          }
+        } while ($attempt -lt $maxAttempts)
+
+        if (-not $ngrokRunning) {
+          Write-Error "NGROK web interface not accessible after $maxAttempts attempts"
+          exit 1
+        }
+
+    - name: Get NGROK Public URL
       run: |
         $maxAttempts = 5
         $attempt = 0
@@ -90,7 +114,7 @@ jobs:
             Write-Host "NGROK Public URL: $publicUrl"
             break
           } catch {
-            Write-Host "Attempt $attempt Failed to get NGROK public URL. Retrying in 5 seconds..."
+            Write-Host "Attempt $attempt: Failed to get NGROK public URL. Retrying in 5 seconds..."
             Start-Sleep -Seconds 5
           }
         } while ($attempt -lt $maxAttempts)
