@@ -72,7 +72,7 @@ jobs:
               break
             }
           } catch {
-            Write-Host "Attempt $attempt: NGROK web interface not accessible. Retrying in 5 seconds..."
+            Write-Host "Attempt NGROK web interface not accessible. Retrying in 5 seconds..."
             Start-Sleep -Seconds 5
           }
         } while ($attempt -lt $maxAttempts)
