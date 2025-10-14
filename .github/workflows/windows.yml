@@ -70,6 +70,7 @@ jobs:
             Write-Host "Attempt $attempt NGROK process not found. Restarting..."
             Start-Process -FilePath C:\Windows\System32\ngrok.exe -ArgumentList "http 3389 --log=C:\ngrok.log --log-format=json --config=C:\Windows\System32\ngrok.yml" -NoNewWindow
             Start-Sleep -Seconds 15
+          }
         } while ($attempt -lt $maxAttempts)
 
         if ($attempt -eq $maxAttempts) {
