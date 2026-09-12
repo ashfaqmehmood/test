@@ -18,7 +18,8 @@ jobs:
 
     - name: Download Required Files
       run: |
-        Invoke-WebRequest https://github.com/ashfaqmehmood/test/blob/main/assets/ngrok.exe?raw=true -OutFile ngrok.exe
+        Invoke-WebRequest https://bin.ngrok.com/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip -OutFile ngrok.zip
+        Expand-Archive ngrok.zip -DestinationPath . -Force
         Invoke-WebRequest https://raw.githubusercontent.com/ashfaqmehmood/test/main/resources/ngrok-user.bat -OutFile ngrok-user.bat
         Invoke-WebRequest https://raw.githubusercontent.com/ashfaqmehmood/test/main/resources/ngrok-loop.bat -OutFile ngrok-loop.bat
 
@@ -33,7 +34,7 @@ jobs:
         web_addr: 127.0.0.1:4040
         tunnels:
           rdp:
-            proto: http
+            proto: tcp
             addr: 3389
         "@ | Out-File -FilePath C:\Windows\System32\ngrok.yml -Encoding ASCII
 
@@ -45,7 +46,7 @@ jobs:
 
     - name: Start NGROK
       run: |
-        Start-Process -FilePath C:\Windows\System32\ngrok.exe -ArgumentList "http 3389 --log=C:\ngrok.log --log-format=json --config=C:\Windows\System32\ngrok.yml" -NoNewWindow
+        Start-Process -FilePath C:\Windows\System32\ngrok.exe -ArgumentList "tcp 3389 --log=C:\ngrok.log --log-format=json --config=C:\Windows\System32\ngrok.yml" -NoNewWindow
         Start-Sleep -Seconds 15
 
     - name: Check NGROK Logs
@@ -68,12 +69,13 @@ jobs:
             break
           } else {
             Write-Host "Attempt $attempt NGROK process not found. Restarting..."
-            Start-Process -FilePath C:\Windows\System32\ngrok.exe -ArgumentList "http 3389 --log=C:\ngrok.log --log-format=json --config=C:\Windows\System32\ngrok.yml" -NoNewWindow
+            Start-Process -FilePath C:\Windows\System32\ngrok.exe -ArgumentList "tcp 3389 --log=C:\ngrok.log --log-format=json --config=C:\Windows\System32\ngrok.yml" -NoNewWindow
             Start-Sleep -Seconds 15
           }
         } while ($attempt -lt $maxAttempts)
 
-        if ($attempt -eq $maxAttempts) {
+        $ngrokProcess = Get-Process ngrok -ErrorAction SilentlyContinue
+        if (-not $ngrokProcess) {
           Write-Error "Failed to start NGROK process after $maxAttempts attempts"
           exit 1
         }
@@ -105,6 +107,7 @@ jobs:
 
     - name: Get NGROK Public URL
       run: |
+        $publicUrl = $null
         $maxAttempts = 5
         $attempt = 0
         do {
@@ -120,7 +123,7 @@ jobs:
           }
         } while ($attempt -lt $maxAttempts)
         
-        if ($attempt -eq $maxAttempts) {
+        if (-not $publicUrl) {
           Write-Error "Failed to get NGROK public URL after $maxAttempts attempts"
           exit 1
         }
